@@ -5,10 +5,9 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
-  const isGithubBuild = process.env.BUILD_TARGET === 'github';
   return {
     plugins: [react(), tailwindcss()],
-    base: isGithubBuild ? '/Gestor-de-presen-a/' : '/',
+    base: './',
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },

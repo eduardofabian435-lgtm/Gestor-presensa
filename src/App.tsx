@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { FirebaseProvider, useFirebase } from './contexts/FirebaseContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
@@ -159,7 +159,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <FirebaseProvider>
-        <Router basename={import.meta.env.BASE_URL}>
+        <Router>
           <AnimatedRoutes />
         </Router>
       </FirebaseProvider>
