@@ -159,7 +159,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <FirebaseProvider>
-        <Router>
+        <Router basename={import.meta.env.BASE_URL}>
           <AnimatedRoutes />
         </Router>
       </FirebaseProvider>

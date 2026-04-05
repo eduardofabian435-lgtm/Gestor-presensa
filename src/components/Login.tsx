@@ -50,7 +50,7 @@ const Login: React.FC = () => {
       } else if (err.code === 'auth/operation-not-allowed') {
         setError('O login com Google não está ativado no Firebase Console.');
       } else if (err.code === 'auth/unauthorized-domain') {
-        setError('Este domínio não está autorizado no Firebase Console. Por favor, adicione o domínio do Netlify na lista de domínios autorizados do Firebase.');
+        setError('Este domínio não está autorizado no Firebase Console. Por favor, adicione o domínio do GitHub Pages na lista de domínios autorizados do Firebase.');
       } else {
         setError(`Erro ao entrar com Google: ${err.message || 'Erro desconhecido'}`);
       }
