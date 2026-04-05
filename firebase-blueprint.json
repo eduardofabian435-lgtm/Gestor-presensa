@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a teacher or administrator in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "role": { "type": "string", "enum": ["admin", "teacher"], "description": "Access level" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Represents a student enrolled in the institution.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the student" },
+        "registrationNumber": { "type": "string", "description": "Unique student ID" },
+        "classId": { "type": "string", "description": "Reference to the class" },
+        "polo": { "type": "string", "enum": ["salvador", "ilha"], "description": "Management pole" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "vulnerabilityAreaId": { "type": "string", "description": "Reference to a vulnerability area" },
+        "isVulnerabilityArea": { "type": "boolean", "description": "Whether the student lives in a vulnerability area" },
+        "isRiskArea": { "type": "boolean", "description": "Whether the student lives in a risk area" },
+        "paysWater": { "type": "boolean", "description": "Whether the student pays for water" },
+        "paysElectricity": { "type": "boolean", "description": "Whether the student pays for electricity" },
+        "hasWaterGato": { "type": "boolean", "description": "Whether the student has illegal water connection" },
+        "hasElectricityGato": { "type": "boolean", "description": "Whether the student has illegal electricity connection" }
+      },
+      "required": ["name", "registrationNumber", "classId", "polo"]
+    },
+    "VulnerabilityArea": {
+      "title": "Vulnerability Area",
+      "description": "Area marked as vulnerable on the map",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Area name" },
+        "description": { "type": "string", "description": "Description of vulnerability" },
+        "type": { "type": "string", "enum": ["slum", "low-income", "remote", "other"], "description": "Type of area" },
+        "polo": { "type": "string", "enum": ["salvador", "ilha"], "description": "Management pole" },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "lat": { "type": "number" },
+              "lng": { "type": "number" }
+            }
+          }
+        },
+        "color": { "type": "string", "description": "Hex color for the area" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the area was created" }
+      },
+      "required": ["name", "type", "polo", "points"]
+    },
+    "Class": {
+      "title": "Class",
+      "description": "Represents a class or group of students.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Class name (e.g., 10th Grade A)" },
+        "description": { "type": "string", "description": "A brief description of the group" },
+        "status": { "type": "string", "enum": ["active", "inactive"], "description": "Whether the group is active or not" },
+        "teacherId": { "type": "string", "description": "UID of the teacher assigned to this class (optional)" },
+        "polo": { "type": "string", "enum": ["salvador", "ilha"], "description": "Management pole" }
+      },
+      "required": ["name", "status", "polo"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "A single attendance entry for a student on a specific date.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "Reference to the student" },
+        "classId": { "type": "string", "description": "Reference to the class" },
+        "polo": { "type": "string", "enum": ["salvador", "ilha"], "description": "Management pole" },
+        "date": { "type": "string", "format": "date", "description": "Date of attendance (YYYY-MM-DD)" },
+        "status": { "type": "string", "enum": ["present", "absent"], "description": "Attendance status" },
+        "teacherId": { "type": "string", "description": "UID of the teacher who took the attendance" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the record was created" }
+      },
+      "required": ["studentId", "classId", "polo", "date", "status", "teacherId", "timestamp"]
+    },
+    "Interruption": {
+      "title": "Interruption",
+      "description": "Represents a class interruption or incident recorded by a teacher.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "description": "Reference to the class" },
+        "teacherId": { "type": "string", "description": "UID of the teacher who recorded it" },
+        "polo": { "type": "string", "enum": ["salvador", "ilha"], "description": "Management pole" },
+        "date": { "type": "string", "format": "date", "description": "Date of the interruption (YYYY-MM-DD)" },
+        "description": { "type": "string", "description": "Detailed description of the incident" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the record was created" }
+      },
+      "required": ["classId", "teacherId", "polo", "date", "description", "timestamp"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Represents a calendar event like a holiday or exam.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Event title" },
+        "description": { "type": "string", "description": "Event description" },
+        "date": { "type": "string", "format": "date", "description": "Date of the event (YYYY-MM-DD)" },
+        "type": { "type": "string", "enum": ["holiday", "exam", "meeting", "other"], "description": "Event type" },
+        "createdBy": { "type": "string", "description": "UID of the user who created the event" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the event was created" }
+      },
+      "required": ["title", "date", "type", "createdBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "Profile information for admins and teachers."
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Global list of students."
+    },
+    "/classes/{classId}": {
+      "schema": "Class",
+      "description": "List of classes."
+    },
+    "/attendance/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Attendance logs."
+    },
+    "/interruptions/{interruptionId}": {
+      "schema": "Interruption",
+      "description": "Class interruptions and incidents."
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Calendar events."
+    },
+    "/vulnerability_areas/{areaId}": {
+      "schema": "VulnerabilityArea",
+      "description": "Vulnerability areas for mapping."
+    }
+  }
+}

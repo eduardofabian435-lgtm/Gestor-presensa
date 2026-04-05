@@ -1,0 +1,251 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - name: string (required)
+    //   - email: string (required, email format)
+    //   - role: string (required, 'admin' | 'teacher')
+    //
+    // Collection: students
+    // Document ID: {studentId}
+    // Fields:
+    //   - name: string (required)
+    //   - registrationNumber: string (required)
+    //   - classId: string (required)
+    //   - polo: string (required, 'salvador' | 'ilha')
+    //   - email: string (optional)
+    //   - phone: string (optional)
+    //   - status: string (required, 'active' | 'inactive')
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: classes
+    // Document ID: {classId}
+    // Fields:
+    //   - name: string (required)
+    //   - teacherId: string (required)
+    //   - polo: string (required, 'salvador' | 'ilha')
+    //
+    // Collection: attendance
+    // Document ID: {recordId}
+    // Fields:
+    //   - studentId: string (required)
+    //   - classId: string (required)
+    //   - polo: string (required, 'salvador' | 'ilha')
+    //   - date: string (required, YYYY-MM-DD)
+    //   - status: string (required, 'present' | 'absent')
+    //   - teacherId: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: events
+    // Document ID: {eventId}
+    // Fields:
+    //   - title: string (required)
+    //   - description: string (optional)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - type: string (required, 'holiday' | 'exam' | 'meeting' | 'other')
+    //   - createdBy: string (required)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: interruptions
+    // Document ID: {interruptionId}
+    // Fields:
+    //   - classId: string (required)
+    //   - teacherId: string (required)
+    //   - polo: string (required, 'salvador' | 'ilha')
+    //   - date: string (required, YYYY-MM-DD)
+    //   - description: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: vulnerability_areas
+    // Document ID: {areaId}
+    // Fields:
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - type: string (required, 'slum' | 'low-income' | 'remote' | 'other')
+    //   - polo: string (required, 'salvador' | 'ilha')
+    //   - points: list (required, list of {lat, lng} maps)
+    //   - color: string (optional)
+    //   - createdAt: timestamp (required)
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == "eduardofabian435@gmail.com") ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.role in ['admin', 'teacher'];
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'registrationNumber', 'classId', 'polo', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.registrationNumber is string && data.registrationNumber.size() > 0 &&
+             data.classId is string &&
+             data.polo in ['salvador', 'ilha'] &&
+             (!('email' in data) || (data.email is string && (data.email == "" || data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")))) &&
+             (!('phone' in data) || data.phone is string) &&
+             data.status in ['active', 'inactive'] &&
+             (!('location' in data) || (data.location is map && data.location.lat is number && data.location.lng is number)) &&
+             (!('vulnerabilityAreaId' in data) || data.vulnerabilityAreaId is string) &&
+             (!('isVulnerabilityArea' in data) || data.isVulnerabilityArea is bool) &&
+             (!('isRiskArea' in data) || data.isRiskArea is bool) &&
+             (!('paysWater' in data) || data.paysWater is bool) &&
+             (!('paysElectricity' in data) || data.paysElectricity is bool) &&
+             (!('hasWaterGato' in data) || data.hasWaterGato is bool) &&
+             (!('hasElectricityGato' in data) || data.hasElectricityGato is bool) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidVulnerabilityArea(data) {
+      return data.keys().hasAll(['name', 'type', 'polo', 'points', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.type in ['slum', 'low-income', 'remote', 'other'] &&
+             data.polo in ['salvador', 'ilha'] &&
+             data.points is list &&
+             (!('description' in data) || data.description is string) &&
+             (!('color' in data) || data.color is string) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidClass(data) {
+      return data.keys().hasAll(['name', 'polo', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.polo in ['salvador', 'ilha'] &&
+             (!('description' in data) || data.description is string) &&
+             data.status in ['active', 'inactive'] &&
+             (!('teacherId' in data) || data.teacherId is string) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['studentId', 'classId', 'polo', 'date', 'status', 'teacherId', 'timestamp']) &&
+             data.studentId is string &&
+             data.classId is string &&
+             data.polo in ['salvador', 'ilha'] &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in ['present', 'absent'] &&
+             data.teacherId is string &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidEvent(data) {
+      return data.keys().hasAll(['title', 'date', 'type', 'createdBy', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.type in ['holiday', 'exam', 'meeting', 'other'] &&
+             data.createdBy is string &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidInterruption(data) {
+      return data.keys().hasAll(['classId', 'teacherId', 'polo', 'date', 'description', 'timestamp']) &&
+             data.classId is string &&
+             data.teacherId is string &&
+             data.polo in ['salvador', 'ilha'] &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.description is string && data.description.size() > 0 &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidClassReport(data) {
+      return data.keys().hasAll(['classId', 'teacherId', 'polo', 'date', 'content', 'timestamp']) &&
+             data.classId is string &&
+             data.teacherId is string &&
+             data.polo in ['salvador', 'ilha'] &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.content is string && data.content.size() > 0 &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isAdmin() || (isOwner(uid) && request.resource.data.role == resource.data.role));
+      allow delete: if isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create: if (isAdmin() || isTeacher()) && isValidStudent(request.resource.data);
+      allow update: if (isAdmin() || isTeacher()) && isValidStudent(request.resource.data);
+      allow delete: if isAdmin() || isTeacher();
+    }
+
+    match /classes/{classId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() || (isAuthenticated() && request.auth.token.email != null && request.auth.token.email.lower() == "eduardofabian435@gmail.com" && isValidClass(request.resource.data));
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.token.email != null && request.auth.token.email.lower() == "eduardofabian435@gmail.com" && isValidClass(request.resource.data));
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.token.email != null && request.auth.token.email.lower() == "eduardofabian435@gmail.com");
+    }
+
+    match /attendance/{recordId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAttendance(request.resource.data) && (isAdmin() || isTeacher());
+      allow update: if isAuthenticated() && isValidAttendance(request.resource.data) && (isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid));
+      allow delete: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidEvent(request.resource.data) && (isAdmin() || isTeacher());
+      allow update: if isAuthenticated() && isValidEvent(request.resource.data) && (isAdmin() || (isTeacher() && resource.data.createdBy == request.auth.uid));
+      allow delete: if isAdmin() || (isTeacher() && resource.data.createdBy == request.auth.uid);
+    }
+
+    match /interruptions/{interruptionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidInterruption(request.resource.data) && (isAdmin() || isTeacher());
+      allow update: if isAuthenticated() && isValidInterruption(request.resource.data) && (isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid));
+      allow delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+    }
+
+    match /class_reports/{reportId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidClassReport(request.resource.data) && (isAdmin() || isTeacher());
+      allow update: if isAuthenticated() && isValidClassReport(request.resource.data) && (isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid));
+      allow delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+    }
+
+    match /vulnerability_areas/{areaId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() || isTeacher();
+      allow update: if isAdmin() || isTeacher();
+      allow delete: if isAdmin();
+    }
+  }
+}
