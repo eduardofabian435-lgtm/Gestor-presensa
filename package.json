@@ -1,12 +1,14 @@
 {
-  "name": "react-example",
+  "name": "gestor-presenca",
   "private": true,
   "version": "0.0.0",
+  "homepage": "https://eduardofabian435-lgtm.github.io/Gestor-de-presen-a",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
@@ -39,6 +41,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
+    "gh-pages": "^6.3.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
