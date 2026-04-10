@@ -28,8 +28,17 @@ service cloud.firestore {
     // Document ID: {classId}
     // Fields:
     //   - name: string (required)
-    //   - teacherId: string (required)
+    //   - teacherIds: list (required)
     //   - polo: string (required, 'salvador' | 'ilha')
+    //
+    // Collection: schedules
+    // Document ID: {scheduleId}
+    // Fields:
+    //   - name: string (required)
+    //   - ageRange: string (optional)
+    //   - shift: string (required, 'Manhã' | 'Tarde' | 'Noite' | 'Integral')
+    //   - days: map (required, day names to list of {time, activity, details} maps)
+    //   - createdAt: timestamp (optional)
     //
     // Collection: attendance
     // Document ID: {recordId}
@@ -144,8 +153,17 @@ service cloud.firestore {
              data.polo in ['salvador', 'ilha'] &&
              (!('description' in data) || data.description is string) &&
              data.status in ['active', 'inactive'] &&
-             (!('teacherId' in data) || data.teacherId is string) &&
+             (!('teacherIds' in data) || data.teacherIds is list) &&
              data.createdAt is timestamp;
+    }
+
+    function isValidSchedule(data) {
+      return data.keys().hasAll(['name', 'shift', 'days']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.shift in ['Manhã', 'Tarde', 'Noite', 'Integral'] &&
+             data.days is map &&
+             (!('ageRange' in data) || data.ageRange is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
     }
 
     function isValidAttendance(data) {
@@ -245,6 +263,13 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAdmin() || isTeacher();
       allow update: if isAdmin() || isTeacher();
+      allow delete: if isAdmin();
+    }
+
+    match /schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
   }

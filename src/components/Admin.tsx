@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, ClassRoom, Student } from '../types';
 
 const Admin: React.FC = () => {
-  const { isAdmin } = useFirebase();
+  const { isAdmin, isTeacher } = useFirebase();
   const [activeTab, setActiveTab] = useState<'users' | 'classes' | 'students' | 'maintenance'>('users');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [classes, setClasses] = useState<ClassRoom[]>([]);
@@ -18,7 +18,7 @@ const Admin: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Form states
-  const [newClass, setNewClass] = useState({ name: '', teacherId: '', polo: 'salvador' as 'salvador' | 'ilha' });
+  const [newClass, setNewClass] = useState({ name: '', teacherIds: [] as string[], polo: 'salvador' as 'salvador' | 'ilha' });
   const [newStudent, setNewStudent] = useState({ name: '', registrationNumber: '', classId: '', polo: 'salvador' as 'salvador' | 'ilha' });
   const [selectedPoloFilter, setSelectedPoloFilter] = useState<'all' | 'salvador' | 'ilha'>('all');
   const [migrating, setMigrating] = useState(false);
@@ -69,7 +69,7 @@ const Admin: React.FC = () => {
 
   const handleAddClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newClass.name || !newClass.teacherId) return;
+    if (!newClass.name || newClass.teacherIds.length === 0) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -79,10 +79,10 @@ const Admin: React.FC = () => {
       if (existingClass) {
         // Update existing class
         await updateDoc(doc(db, 'classes', existingClass.id), {
-          teacherId: newClass.teacherId,
+          teacherIds: newClass.teacherIds,
           updatedAt: serverTimestamp()
         });
-        alert('Professor vinculado à turma existente com sucesso!');
+        alert('Professores vinculados à turma existente com sucesso!');
       } else {
         // Create new class
         await addDoc(collection(db, 'classes'), {
@@ -92,7 +92,7 @@ const Admin: React.FC = () => {
         });
         alert('Turma adicionada com sucesso!');
       }
-      setNewClass({ name: '', teacherId: '', polo: 'salvador' });
+      setNewClass({ name: '', teacherIds: [], polo: 'salvador' });
     } catch (err: any) {
       console.error(err);
       setError('Erro ao processar turma: ' + (err.message || 'Verifique suas permissões.'));
@@ -297,7 +297,7 @@ const Admin: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Form Column */}
-        {isAdmin && (
+        {(isAdmin || (activeTab === 'students' && isTeacher)) && (
           <div className="lg:col-span-1">
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm sticky top-8">
               {error && (
@@ -324,77 +324,87 @@ const Admin: React.FC = () => {
                 </div>
               )}
 
-                  {activeTab === 'classes' && (
-                    <form onSubmit={handleAddClass} className="space-y-6">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome do Grupo</label>
-                        <input
-                          type="text"
-                          required
-                          list="existing-group-names"
-                          value={newClass.name}
-                          onChange={(e) => setNewClass({ ...newClass, name: e.target.value })}
-                          className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-50 focus:border-[#1a36b1] outline-none transition-all font-bold text-slate-700"
-                          placeholder="Ex: 1º Ano A"
-                        />
-                        <datalist id="existing-group-names">
-                          {Array.from(new Set(classes.map(c => c.name))).sort().map(name => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Polo</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setNewClass({ ...newClass, polo: 'salvador' })}
-                            className={cn(
-                              "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
-                              newClass.polo === 'salvador' 
-                                ? "bg-[#1a36b1] text-white border-[#1a36b1]" 
-                                : "bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100"
-                            )}
-                          >
-                            Salvador
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setNewClass({ ...newClass, polo: 'ilha' })}
-                            className={cn(
-                              "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
-                              newClass.polo === 'ilha' 
-                                ? "bg-[#1a36b1] text-white border-[#1a36b1]" 
-                                : "bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100"
-                            )}
-                          >
-                            Ilha
-                          </button>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Professor Responsável</label>
-                        <select
-                          required
-                          value={newClass.teacherId}
-                          onChange={(e) => setNewClass({ ...newClass, teacherId: e.target.value })}
-                          className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-50 focus:border-[#1a36b1] outline-none transition-all font-bold text-slate-700 appearance-none"
-                        >
-                          <option value="">Selecione um professor...</option>
-                          {users.filter(u => u.role === 'teacher').map(u => (
-                            <option key={u.uid} value={u.uid}>{u.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <button 
-                        type="submit" 
-                        disabled={submitting}
-                        className="w-full py-4 bg-[#f9a825] text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-orange-900/20 active:scale-95 disabled:opacity-50 disabled:scale-100"
+              {activeTab === 'classes' && (isAdmin) && (
+                <form onSubmit={handleAddClass} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome do Grupo</label>
+                    <input
+                      type="text"
+                      required
+                      list="existing-group-names"
+                      value={newClass.name}
+                      onChange={(e) => setNewClass({ ...newClass, name: e.target.value })}
+                      className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-50 focus:border-[#1a36b1] outline-none transition-all font-bold text-slate-700"
+                      placeholder="Ex: 1º Ano A"
+                    />
+                    <datalist id="existing-group-names">
+                      {Array.from(new Set(classes.map(c => c.name))).sort().map(name => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Polo</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewClass({ ...newClass, polo: 'salvador' })}
+                        className={cn(
+                          "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
+                          newClass.polo === 'salvador' 
+                            ? "bg-[#1a36b1] text-white border-[#1a36b1]" 
+                            : "bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100"
+                        )}
                       >
-                        {submitting ? 'Adicionando...' : 'Adicionar Turma'}
+                        Salvador
                       </button>
-                    </form>
-                  )}
+                      <button
+                        type="button"
+                        onClick={() => setNewClass({ ...newClass, polo: 'ilha' })}
+                        className={cn(
+                          "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
+                          newClass.polo === 'ilha' 
+                            ? "bg-[#1a36b1] text-white border-[#1a36b1]" 
+                            : "bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100"
+                        )}
+                      >
+                        Ilha
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Professores Responsáveis (Selecione um ou mais)</label>
+                    <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                      {users.filter(u => u.role === 'teacher').map(u => (
+                        <label key={u.uid} className="flex items-center gap-3 p-2 hover:bg-white rounded-xl cursor-pointer transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={newClass.teacherIds.includes(u.uid)}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setNewClass(prev => ({
+                                ...prev,
+                                teacherIds: checked 
+                                  ? [...prev.teacherIds, u.uid]
+                                  : prev.teacherIds.filter(id => id !== u.uid)
+                              }));
+                            }}
+                            className="w-4 h-4 rounded border-slate-300 text-[#1a36b1] focus:ring-[#1a36b1]"
+                          />
+                          <span className="text-sm font-bold text-slate-700">{u.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <button 
+                    type="submit" 
+                    disabled={submitting}
+                    className="w-full py-4 bg-[#f9a825] text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-orange-900/20 active:scale-95 disabled:opacity-50 disabled:scale-100"
+                  >
+                    {submitting ? 'Adicionando...' : 'Adicionar Turma'}
+                  </button>
+                </form>
+              )}
 
                   {activeTab === 'students' && (
                     <form onSubmit={handleAddStudent} className="space-y-6">
@@ -531,7 +541,14 @@ const Admin: React.FC = () => {
                           {c.polo === 'salvador' ? 'Salvador' : 'Ilha'}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 font-medium">Professor: <span className="text-[#1a36b1] font-black">{users.find(u => u.uid === c.teacherId)?.name || 'N/A'}</span></p>
+                      <p className="text-xs text-slate-400 font-medium">
+                        Professores: <span className="text-[#1a36b1] font-black">
+                          {c.teacherIds?.map(id => users.find(u => u.uid === id)?.name).filter(Boolean).join(', ') || 'N/A'}
+                        </span>
+                      </p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                        Total de alunos: <span className="text-[#1a36b1]">{students.filter(s => s.classId === c.id).length}</span>
+                      </p>
                     </div>
                   </div>
                   {isAdmin && (

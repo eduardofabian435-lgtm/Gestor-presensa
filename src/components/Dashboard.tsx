@@ -69,25 +69,34 @@ const Dashboard: React.FC = () => {
     const qClasses = collection(db, 'classes');
 
     const unsubGroups = onSnapshot(qClasses, (snap) => {
-      const groupsData = snap.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name,
-        description: doc.data().description,
-        polo: doc.data().polo,
-        studentCount: 0 
-      }));
+      const groupsData = snap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          description: data.description,
+          polo: data.polo,
+          teacherIds: data.teacherIds || [],
+          studentCount: 0 
+        };
+      });
       
       const cMap: Record<string, string> = {};
       const pMap: Record<string, string> = {};
       snap.docs.forEach(d => {
-        cMap[d.id] = d.data().name;
-        pMap[d.id] = d.data().polo;
+        const data = d.data();
+        cMap[d.id] = data.name;
+        pMap[d.id] = data.polo;
       });
       setClassesMap(cMap);
       setClassesPoloMap(pMap);
 
-      const filteredGroups = groupsData.filter(g => selectedPolo === 'all' || g.polo === selectedPolo);
-      setGroups(filteredGroups.slice(0, 5));
+      const filteredGroups = groupsData.filter(g => {
+        const matchesPolo = selectedPolo === 'all' || g.polo === selectedPolo;
+        const matchesTeacher = !simulatedTeacherId || g.teacherIds.includes(simulatedTeacherId) || (profile?.role === 'teacher' && g.teacherIds.includes(profile.uid));
+        return matchesPolo && (isAdmin ? (simulatedTeacherId ? g.teacherIds.includes(simulatedTeacherId) : true) : g.teacherIds.includes(profile?.uid || ''));
+      });
+      setGroups(filteredGroups.slice(0, 10));
       setStats(prev => ({ ...prev, activeGroups: filteredGroups.length }));
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'classes');
@@ -162,11 +171,18 @@ const Dashboard: React.FC = () => {
       });
 
       // 5. Classes this month count
-      const currentMonthStr = format(new Date(), 'yyyy-MM');
+      const start = new Date();
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setMonth(end.getMonth() + 1);
+      end.setDate(0);
+      end.setHours(23, 59, 59, 999);
+
       const qMonth = query(
         collection(db, 'attendance'),
-        where('date', '>=', `${currentMonthStr}-01`),
-        where('date', '<=', `${currentMonthStr}-31`)
+        where('timestamp', '>=', start),
+        where('timestamp', '<=', end)
       );
       
       const unsubMonthReal = onSnapshot(qMonth, (snap) => {
@@ -175,7 +191,11 @@ const Dashboard: React.FC = () => {
           const data = doc.data();
           const classPolo = data.polo || '';
           if (selectedPolo === 'all' || classPolo === selectedPolo) {
-            monthSessions.add(`${data.date}_${data.classId}`);
+            // Only count if the teacher is the one we are looking at (or any if admin)
+            const matchesTeacher = !simulatedTeacherId || data.teacherId === simulatedTeacherId || (profile?.role === 'teacher' && data.teacherId === profile.uid);
+            if (isAdmin ? (simulatedTeacherId ? data.teacherId === simulatedTeacherId : true) : data.teacherId === profile?.uid) {
+              monthSessions.add(`${data.date}_${data.classId}`);
+            }
           }
         });
         setStats(prev => ({ ...prev, classesThisMonth: monthSessions.size }));

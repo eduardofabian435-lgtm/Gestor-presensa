@@ -44,7 +44,7 @@ export interface VulnerabilityArea {
 export interface ClassRoom {
   id: string;
   name: string;
-  teacherId: string;
+  teacherIds: string[];
   polo: 'salvador' | 'ilha';
 }
 
@@ -77,4 +77,23 @@ export interface ClassReport {
   date: string;
   content: string;
   timestamp: any;
+}
+
+export interface ScheduleItem {
+  time: string;
+  activity: string;
+  details?: string;
+}
+
+export interface DaySchedule {
+  [day: string]: ScheduleItem[];
+}
+
+export interface GroupSchedule {
+  id: string;
+  name: string;
+  ageRange?: string;
+  shift: 'Manhã' | 'Tarde' | 'Noite' | 'Integral';
+  days: DaySchedule;
+  createdAt?: any;
 }

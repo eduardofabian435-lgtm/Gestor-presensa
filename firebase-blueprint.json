@@ -70,10 +70,42 @@
         "name": { "type": "string", "description": "Class name (e.g., 10th Grade A)" },
         "description": { "type": "string", "description": "A brief description of the group" },
         "status": { "type": "string", "enum": ["active", "inactive"], "description": "Whether the group is active or not" },
-        "teacherId": { "type": "string", "description": "UID of the teacher assigned to this class (optional)" },
+        "teacherIds": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "UIDs of the teachers assigned to this class" 
+        },
         "polo": { "type": "string", "enum": ["salvador", "ilha"], "description": "Management pole" }
       },
       "required": ["name", "status", "polo"]
+    },
+    "Schedule": {
+      "title": "Schedule",
+      "description": "Weekly schedule for a specific group.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Group name" },
+        "ageRange": { "type": "string", "description": "Age range of the group" },
+        "shift": { "type": "string", "enum": ["Manhã", "Tarde", "Noite", "Integral"], "description": "Shift" },
+        "days": {
+          "type": "object",
+          "description": "Map of days to schedule items",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "time": { "type": "string" },
+                "activity": { "type": "string" },
+                "details": { "type": "string" }
+              },
+              "required": ["time", "activity"]
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "shift", "days"]
     },
     "AttendanceRecord": {
       "title": "AttendanceRecord",
@@ -147,6 +179,10 @@
     "/vulnerability_areas/{areaId}": {
       "schema": "VulnerabilityArea",
       "description": "Vulnerability areas for mapping."
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "Schedule",
+      "description": "Weekly class schedules."
     }
   }
 }

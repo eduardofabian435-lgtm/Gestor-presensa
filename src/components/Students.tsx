@@ -85,7 +85,8 @@ const Students: React.FC = () => {
 
   const filteredStudents = useMemo(() => {
     return students.filter(student => {
-      const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const name = student.name || '';
+      const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesGroup = selectedGroup === 'all' || student.classId === selectedGroup;
       const matchesPolo = selectedPolo === 'all' || student.polo === selectedPolo;
       return matchesSearch && matchesGroup && matchesPolo;
@@ -465,6 +466,18 @@ const Students: React.FC = () => {
                         className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Matrícula</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ID único"
+                      value={formData.registrationNumber}
+                      onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                    />
                   </div>
 
                   <div>

@@ -10,9 +10,10 @@ interface Group {
   name: string;
   description?: string;
   status: 'active' | 'inactive';
-  teacherId?: string;
-  teacherName?: string;
+  teacherIds?: string[];
+  teacherNames?: string[];
   polo: 'salvador' | 'ilha';
+  studentCount?: number;
 }
 
 interface Teacher {
@@ -31,7 +32,7 @@ const Groups: React.FC = () => {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDescription, setNewGroupDescription] = useState('');
   const [newGroupStatus, setNewGroupStatus] = useState<'active' | 'inactive'>('active');
-  const [newGroupTeacherId, setNewGroupTeacherId] = useState('');
+  const [newGroupTeacherIds, setNewGroupTeacherIds] = useState<string[]>([]);
   const [newGroupPolo, setNewGroupPolo] = useState<'salvador' | 'ilha'>('salvador');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPolo, setSelectedPolo] = useState<'all' | 'salvador' | 'ilha'>('all');
@@ -45,7 +46,7 @@ const Groups: React.FC = () => {
         ...doc.data()
       })) as Group[];
 
-      // Fetch teacher names for each group (optional now)
+      // Fetch teacher names
       const teachersSnap = await getDocs(collection(db, 'users'));
       const teachersList: Teacher[] = [];
       const teachersMap = new Map();
@@ -59,9 +60,18 @@ const Groups: React.FC = () => {
 
       setTeachers(teachersList);
 
+      // Fetch student counts
+      const studentsSnap = await getDocs(collection(db, 'students'));
+      const studentCounts: Record<string, number> = {};
+      studentsSnap.docs.forEach(doc => {
+        const classId = doc.data().classId;
+        studentCounts[classId] = (studentCounts[classId] || 0) + 1;
+      });
+
       const enrichedGroups = groupsData.map(group => ({
         ...group,
-        teacherName: group.teacherId ? (teachersMap.get(group.teacherId) || 'Professor não atribuído') : 'Sem professor'
+        teacherNames: group.teacherIds?.map(id => teachersMap.get(id)).filter(Boolean) || [],
+        studentCount: studentCounts[group.id] || 0
       }));
 
       setGroups(enrichedGroups);
@@ -83,20 +93,20 @@ const Groups: React.FC = () => {
       if (existingGroup) {
         // Update existing group
         await updateDoc(doc(db, 'classes', existingGroup.id), {
-          teacherId: newGroupTeacherId || null,
+          teacherIds: newGroupTeacherIds,
           description: newGroupDescription || existingGroup.description,
           status: newGroupStatus,
           polo: newGroupPolo,
           updatedAt: serverTimestamp()
         });
-        alert('Professor vinculado ao grupo existente com sucesso!');
+        alert('Professores vinculados ao grupo existente com sucesso!');
       } else {
         // Create new group
         await addDoc(collection(db, 'classes'), {
           name: newGroupName,
           description: newGroupDescription,
           status: newGroupStatus,
-          teacherId: newGroupTeacherId || null,
+          teacherIds: newGroupTeacherIds,
           polo: newGroupPolo,
           createdAt: serverTimestamp(),
         });
@@ -106,7 +116,7 @@ const Groups: React.FC = () => {
       setNewGroupName('');
       setNewGroupDescription('');
       setNewGroupStatus('active');
-      setNewGroupTeacherId('');
+      setNewGroupTeacherIds([]);
       setNewGroupPolo('salvador');
       setIsAdding(false);
     } catch (error) {
@@ -128,13 +138,13 @@ const Groups: React.FC = () => {
         name: newGroupName,
         description: newGroupDescription,
         status: newGroupStatus,
-        teacherId: newGroupTeacherId || null,
+        teacherIds: newGroupTeacherIds,
         polo: newGroupPolo,
       });
       setNewGroupName('');
       setNewGroupDescription('');
       setNewGroupStatus('active');
-      setNewGroupTeacherId('');
+      setNewGroupTeacherIds([]);
       setNewGroupPolo('salvador');
       setEditingGroup(null);
     } catch (error) {
@@ -151,7 +161,7 @@ const Groups: React.FC = () => {
     setNewGroupName(group.name);
     setNewGroupDescription(group.description || '');
     setNewGroupStatus(group.status);
-    setNewGroupTeacherId(group.teacherId || '');
+    setNewGroupTeacherIds(group.teacherIds || []);
     setNewGroupPolo(group.polo || 'salvador');
   };
 
@@ -308,7 +318,10 @@ const Groups: React.FC = () => {
                   <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center">
                     <UserPlus className="w-3 h-3" />
                   </div>
-                  {group.teacherName}
+                  {group.teacherNames?.join(', ') || 'Sem professor'}
+                </div>
+                <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Total de alunos: <span className="text-[#1a36b1]">{group.studentCount}</span>
                 </div>
               </motion.div>
             ))}
@@ -355,19 +368,25 @@ const Groups: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Professor Responsável</label>
-                  <div className="relative">
-                    <select
-                      value={newGroupTeacherId}
-                      onChange={(e) => setNewGroupTeacherId(e.target.value)}
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-50 focus:border-[#1a36b1] outline-none transition-all font-bold text-slate-700 appearance-none"
-                    >
-                      <option value="">Selecione um professor...</option>
-                      {teachers.map(t => (
-                        <option key={t.uid} value={t.uid}>{t.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Professores Responsáveis</label>
+                  <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    {teachers.map(t => (
+                      <label key={t.uid} className="flex items-center gap-3 p-2 hover:bg-white rounded-xl cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={newGroupTeacherIds.includes(t.uid)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setNewGroupTeacherIds(prev => checked 
+                              ? [...prev, t.uid]
+                              : prev.filter(id => id !== t.uid)
+                            );
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 text-[#1a36b1] focus:ring-[#1a36b1]"
+                        />
+                        <span className="text-sm font-bold text-slate-700">{t.name}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
 
@@ -431,7 +450,7 @@ const Groups: React.FC = () => {
                       setNewGroupName('');
                       setNewGroupDescription('');
                       setNewGroupStatus('active');
-                      setNewGroupTeacherId('');
+                      setNewGroupTeacherIds([]);
                       setNewGroupPolo('salvador');
                     }}
                     className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"

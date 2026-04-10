@@ -58,10 +58,10 @@ const Attendance: React.FC = () => {
           const studentList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
           setStudents(studentList);
           
-          // Initialize attendance state
+          // Initialize attendance state - all absent by default
           const initial: Record<string, 'present' | 'absent'> = {};
           studentList.forEach(s => {
-            if (s.id) initial[s.id] = 'present';
+            if (s.id) initial[s.id] = 'absent';
           });
           setAttendance(initial);
           setLoading(false);
@@ -82,10 +82,10 @@ const Attendance: React.FC = () => {
     }
   }, [selectedClass]);
 
-  const handleToggle = (studentId: string, status: 'present' | 'absent') => {
+  const handleToggle = (studentId: string) => {
     setAttendance(prev => ({
       ...prev,
-      [studentId]: status
+      [studentId]: prev[studentId] === 'present' ? 'absent' : 'present'
     }));
   };
 
@@ -101,18 +101,20 @@ const Attendance: React.FC = () => {
       const classData = classes.find(c => c.id === selectedClass);
       const polo = classData?.polo || 'salvador';
 
-      // Save attendance for each student
+      // Save attendance only for present students
       Object.entries(attendance).forEach(([studentId, status]) => {
-        const attendanceRef = doc(collection(db, 'attendance'));
-        batch.set(attendanceRef, {
-          studentId,
-          classId: selectedClass,
-          polo,
-          date: today,
-          status,
-          teacherId: user.uid,
-          timestamp: now
-        });
+        if (status === 'present') {
+          const attendanceRef = doc(collection(db, 'attendance'));
+          batch.set(attendanceRef, {
+            studentId,
+            classId: selectedClass,
+            polo,
+            date: today,
+            status: 'present',
+            teacherId: user.uid,
+            timestamp: now
+          });
+        }
       });
       
       // Save the class report if it exists
@@ -317,30 +319,18 @@ const Attendance: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-8 py-5">
-                          <div className="flex items-center justify-center gap-3">
+                          <div className="flex items-center justify-center">
                             <button
-                              onClick={() => handleToggle(student.id, 'present')}
+                              onClick={() => handleToggle(student.id)}
                               className={cn(
-                                "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95",
+                                "flex items-center gap-2 px-8 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95",
                                 attendance[student.id] === 'present'
                                   ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100"
-                                  : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                                  : "bg-slate-50 text-slate-400 hover:bg-slate-100 border border-slate-200"
                               )}
                             >
-                              <Check className="w-4 h-4" />
-                              PARTICIPOU
-                            </button>
-                            <button
-                              onClick={() => handleToggle(student.id, 'absent')}
-                              className={cn(
-                                "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95",
-                                attendance[student.id] === 'absent'
-                                  ? "bg-red-500 text-white shadow-lg shadow-red-100"
-                                  : "bg-slate-50 text-slate-400 hover:bg-slate-100"
-                              )}
-                            >
-                              <X className="w-4 h-4" />
-                              NÃO PARTICIPOU
+                              <Check className={cn("w-4 h-4", attendance[student.id] === 'present' ? "block" : "hidden")} />
+                              {attendance[student.id] === 'present' ? 'PRESENTE' : 'MARCAR PRESENÇA'}
                             </button>
                           </div>
                         </td>
@@ -365,28 +355,16 @@ const Attendance: React.FC = () => {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleToggle(student.id, 'present')}
+                        onClick={() => handleToggle(student.id)}
                         className={cn(
-                          "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-black transition-all",
+                          "flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl text-xs font-black transition-all",
                           attendance[student.id] === 'present'
                             ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100"
-                            : "bg-white text-slate-400 border border-slate-100"
+                            : "bg-white text-slate-400 border border-slate-200"
                         )}
                       >
-                        <Check className="w-4 h-4" />
-                        PARTICIPOU
-                      </button>
-                      <button
-                        onClick={() => handleToggle(student.id, 'absent')}
-                        className={cn(
-                          "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-black transition-all",
-                          attendance[student.id] === 'absent'
-                            ? "bg-red-500 text-white shadow-lg shadow-red-100"
-                            : "bg-white text-slate-400 border border-slate-100"
-                        )}
-                      >
-                        <X className="w-4 h-4" />
-                        NÃO PARTICIPOU
+                        <Check className={cn("w-4 h-4", attendance[student.id] === 'present' ? "block" : "hidden")} />
+                        {attendance[student.id] === 'present' ? 'PRESENTE' : 'MARCAR PRESENÇA'}
                       </button>
                     </div>
                   </div>

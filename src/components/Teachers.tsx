@@ -66,7 +66,7 @@ const Teachers: React.FC = () => {
   );
 
   const getTeacherStats = (teacherId: string) => {
-    const teacherClasses = classes.filter(c => c.teacherId === teacherId);
+    const teacherClasses = classes.filter(c => c.teacherIds?.includes(teacherId));
     const teacherStudents = students.filter(s => teacherClasses.some(c => c.id === s.classId));
     const teacherAttendance = attendance.filter(a => a.teacherId === teacherId);
     
