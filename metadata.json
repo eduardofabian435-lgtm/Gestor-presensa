@@ -1,0 +1,5 @@
+{
+  "name": "Sistema de Presença Escolar",
+  "description": "Sistema completo para gestão de presença de alunos com controle de acesso para professores e administradores.",
+  "requestFramePermissions": []
+}
