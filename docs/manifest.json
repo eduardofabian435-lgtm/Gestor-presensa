@@ -2,7 +2,7 @@
   "name": "Sistema de Presença",
   "short_name": "Presença",
   "description": "Sistema de controle de presença e relatórios escolares.",
-  "start_url": "/Gestor-presensa/",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#1a36b1",
   "theme_color": "#1a36b1",
