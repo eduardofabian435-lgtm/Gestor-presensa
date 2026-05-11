@@ -20,7 +20,7 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { useFirebase, safeFormatDate } from '../contexts/FirebaseContext';
 import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { UserProfile, ClassRoom, Student, AttendanceRecord, Interruption, ClassReport } from '../types';
