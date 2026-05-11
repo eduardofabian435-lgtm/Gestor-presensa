@@ -1,22 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useFirebase, handleFirestoreError, OperationType } from '../contexts/FirebaseContext';
+import { useFirebase } from '../contexts/FirebaseContext';
+import { handleFirestoreError } from '../lib/firebaseUtils';
 import { format } from 'date-fns';
 import { Check, X, Search, Filter, Save, AlertCircle, CheckCircle2, ChevronDown, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { Student, ClassRoom, AttendanceRecord } from '../types';
+import { Student, ClassRoom, AttendanceRecord, OperationType, Polo, AttendanceStatus } from '../types';
+import { useLocation } from 'react-router-dom';
 
 const Attendance: React.FC = () => {
   const { user, isAdmin, isTeacher } = useFirebase();
+  const location = useLocation();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [selectedPolo, setSelectedPolo] = useState<'all' | 'salvador' | 'ilha'>('all');
-  const [selectedClass, setSelectedClass] = useState<string>('');
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedPolo, setSelectedPolo] = useState<Polo | 'all'>('all');
+  const [selectedClass, setSelectedClass] = useState<string>(location.state?.classId || '');
+  const [date, setDate] = useState(location.state?.date || format(new Date(), 'yyyy-MM-dd'));
   const [students, setStudents] = useState<Student[]>([]);
-  const [attendance, setAttendance] = useState<Record<string, 'present' | 'absent'>>({});
-  const [existingRecords, setExistingRecords] = useState<string[]>([]); // To track IDs for deletion if needed
+  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [existingRecords, setExistingRecords] = useState<string[]>([]);
+  const [existingReportId, setExistingReportId] = useState<string | null>(null);
+  const [existingIncidentId, setExistingIncidentId] = useState<string | null>(null);
   const [report, setReport] = useState('');
   const [incident, setIncident] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,8 +44,10 @@ const Attendance: React.FC = () => {
       try {
         setClasses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClassRoom)));
       } catch (err) {
-        console.error("Erro ao carregar turmas:", err);
+        console.error("Erro ao processar snapshot de turmas:", err);
       }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'classes');
     });
     return () => unsub();
   }, []);
@@ -56,9 +63,12 @@ const Attendance: React.FC = () => {
           setStudents(studentList);
           setLoading(false);
         } catch (err) {
-          console.error("Erro ao carregar alunos:", err);
+          console.error("Erro ao processar snapshot de alunos:", err);
           setLoading(false);
         }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'students');
+        setLoading(false);
       });
       return () => unsub();
     } else {
@@ -76,7 +86,7 @@ const Attendance: React.FC = () => {
       );
       
       const unsub = onSnapshot(q, (snap) => {
-        const initial: Record<string, 'present' | 'absent'> = {};
+        const initial: Record<string, AttendanceStatus> = {};
         const recordIds: string[] = [];
         
         // Mark all as absent first
@@ -93,6 +103,8 @@ const Attendance: React.FC = () => {
         
         setAttendance(initial);
         setExistingRecords(recordIds);
+      }, (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'attendance');
       });
 
       // Also fetch report and incident
@@ -104,9 +116,13 @@ const Attendance: React.FC = () => {
       const unsubReport = onSnapshot(qReport, (snap) => {
         if (!snap.empty) {
           setReport(snap.docs[0].data().content);
+          setExistingReportId(snap.docs[0].id);
         } else {
           setReport('');
+          setExistingReportId(null);
         }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'class_reports');
       });
 
       const qIncident = query(
@@ -117,9 +133,13 @@ const Attendance: React.FC = () => {
       const unsubIncident = onSnapshot(qIncident, (snap) => {
         if (!snap.empty) {
           setIncident(snap.docs[0].data().description);
+          setExistingIncidentId(snap.docs[0].id);
         } else {
           setIncident('');
+          setExistingIncidentId(null);
         }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'interruptions');
       });
 
       return () => {
@@ -144,25 +164,62 @@ const Attendance: React.FC = () => {
 
   const handleSave = async () => {
     if (!selectedClass || !user) return;
+    
+    // Check if teacher is trying to edit existing records
+    if (!isAdmin && existingRecords.length > 0) {
+      setError("Atenção: A presença para esta data já foi registrada. Entre em contato com o administrador para realizar ajustes.");
+      setTimeout(() => {
+        if (isMounted.current) setError(null);
+      }, 5000);
+      return;
+    }
+
     setSaving(true);
     setError(null);
-    const today = date; // Use the selected date instead of current date
+    const today = date;
+    
+    // Safety timeout to prevent infinite loading state
+    const timeoutId = setTimeout(() => {
+      if (isMounted.current) {
+        setSaving(prev => {
+          if (prev) {
+            setError("O servidor está demorando para responder. Por favor, verifique sua internet e tente novamente.");
+            return false;
+          }
+          return false;
+        });
+      }
+    }, 15000); // 15 seconds safety
     
     try {
       const batch = writeBatch(db);
       const now = serverTimestamp();
       const classData = classes.find(c => c.id === selectedClass);
-      const polo = classData?.polo || 'salvador';
+      
+      if (!classData) {
+        throw new Error("Dados da turma não encontrados para " + selectedClass);
+      }
+      
+      const rawPolo = classData.polo || 'salvador';
+      const polo = rawPolo.toLowerCase() as Polo;
+
+      // Verify polo is valid for rules
+      if (polo !== 'salvador' && polo !== 'ilha') {
+        throw new Error(`Polo inválido: ${polo}. Deve ser 'salvador' ou 'ilha'.`);
+      }
 
       // 1. Delete all existing attendance records for this date and class
-      // We already have existingRecords IDs from the listener
-      existingRecords.forEach(id => {
-        batch.delete(doc(db, 'attendance', id));
-      });
+      if (existingRecords.length > 0) {
+        existingRecords.forEach(id => {
+          batch.delete(doc(db, 'attendance', id));
+        });
+      }
 
       // 2. Save current attendance only for present students
+      let presentCount = 0;
       Object.entries(attendance).forEach(([studentId, status]) => {
         if (status === 'present') {
+          presentCount++;
           const attendanceRef = doc(collection(db, 'attendance'));
           batch.set(attendanceRef, {
             studentId,
@@ -176,17 +233,13 @@ const Attendance: React.FC = () => {
         }
       });
       
-      // 3. For reports and incidents, we need to find existing ones and delete/update
-      // To keep it simple in a batch, we'll fetch them specifically
-      const { getDocs, query, collection, where } = await import('firebase/firestore');
-      
-      const qReport = query(collection(db, 'class_reports'), where('classId', '==', selectedClass), where('date', '==', today));
-      const reportSnap = await getDocs(qReport);
-      reportSnap.docs.forEach(d => batch.delete(d.ref));
-
-      const qIncident = query(collection(db, 'interruptions'), where('classId', '==', selectedClass), where('date', '==', today));
-      const incidentSnap = await getDocs(qIncident);
-      incidentSnap.docs.forEach(d => batch.delete(d.ref));
+      // 3. Delete existing report and incident using stored IDs
+      if (existingReportId) {
+        batch.delete(doc(db, 'class_reports', existingReportId));
+      }
+      if (existingIncidentId) {
+        batch.delete(doc(db, 'interruptions', existingIncidentId));
+      }
 
       // Save the class report if it exists
       if (report.trim()) {
@@ -214,7 +267,15 @@ const Attendance: React.FC = () => {
         });
       }
       
-      await batch.commit();
+      try {
+        await batch.commit();
+      } catch (commitErr: any) {
+        console.error("Batch commit failed:", commitErr);
+        if (commitErr.code === 'permission-denied') {
+          throw new Error("Permissão negada ao salvar no banco de dados. Verifique seu acesso.");
+        }
+        throw commitErr;
+      }
       
       if (isMounted.current) {
         setSuccess(true);
@@ -227,16 +288,24 @@ const Attendance: React.FC = () => {
       console.error('Error saving attendance:', err);
       if (isMounted.current) {
         let msg = 'Erro ao salvar presença. Tente novamente.';
-        try {
-          const parsed = JSON.parse(err.message);
-          if (parsed.error) msg = `Erro: ${parsed.error}`;
-        } catch (e) {}
+        if (err.code === 'permission-denied') {
+          msg = 'Erro de permissão: Você não tem autorização para realizar esta operação.';
+        } else if (err.message && err.message.includes('Quota exceeded')) {
+          msg = 'Cota do banco de dados excedida. Tente novamente amanhã.';
+        } else if (err.message) {
+          msg = err.message;
+          try {
+            const parsed = JSON.parse(err.message);
+            if (parsed.error) msg = `Erro: ${parsed.error}`;
+          } catch (e) {}
+        }
         setError(msg);
         setTimeout(() => {
           if (isMounted.current) setError(null);
         }, 5000);
       }
     } finally {
+      clearTimeout(timeoutId);
       if (isMounted.current) {
         setSaving(false);
       }
@@ -565,16 +634,7 @@ const Attendance: React.FC = () => {
                 </button>
               </div>
 
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold"
-                >
-                  <AlertCircle className="w-5 h-5 shrink-0" />
-                  {error}
-                </motion.div>
-              )}
+              {/* Error display moved up to be near button */}
             </motion.div>
           )}
         </AnimatePresence>
