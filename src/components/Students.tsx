@@ -28,7 +28,9 @@ import {
 import { db } from '../firebase';
 import { Student, ClassRoom } from '../types';
 import { cn } from '../lib/utils';
-import { useFirebase, handleFirestoreError, OperationType } from '../contexts/FirebaseContext';
+import { useFirebase } from '../contexts/FirebaseContext';
+import { handleFirestoreError } from '../lib/firebaseUtils';
+import { OperationType } from '../types';
 
 const Students: React.FC = () => {
   const { isAdmin, isTeacher } = useFirebase();

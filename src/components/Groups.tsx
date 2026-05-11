@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, addDoc, onSnapshot, query, deleteDoc, doc, updateDoc, getDocs, serverTimestamp, orderBy } from 'firebase/firestore';
-import { useFirebase, handleFirestoreError, OperationType } from '../contexts/FirebaseContext';
+import { useFirebase } from '../contexts/FirebaseContext';
+import { handleFirestoreError } from '../lib/firebaseUtils';
+import { OperationType } from '../types';
 import { Users, Plus, Trash2, Edit2, Loader2, Search, UserPlus, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 

@@ -99,7 +99,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => unsubscribe();
   }, []);
 
-   const value = {
+  const value = {
     user,
     profile,
     loading,
@@ -108,26 +108,5 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isAuthReady,
   };
 
-  return (
-    <FirebaseContext.Provider value={value}>
-      {children}
-    </FirebaseContext.Provider>
-  );
-};
-
-export const safeFormatDate = (date: any) => {
-  if (!date) return '';
-
-  try {
-    // Firestore Timestamp
-    if (date?.toDate) {
-      return format(date.toDate(), 'dd/MM/yyyy');
-    }
-
-    // Data comum
-    return format(new Date(date), 'dd/MM/yyyy');
-  } catch (error) {
-    console.error('Erro ao formatar data:', error);
-    return '';
-  }
+  return <FirebaseContext.Provider value={value}>{children}</FirebaseContext.Provider>;
 };

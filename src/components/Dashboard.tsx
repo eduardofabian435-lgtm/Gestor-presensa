@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot, limit, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useFirebase, handleFirestoreError, OperationType } from '../contexts/FirebaseContext';
+import { useFirebase } from '../contexts/FirebaseContext';
+import { handleFirestoreError } from '../lib/firebaseUtils';
+import { OperationType } from '../types';
 import { 
   Users, 
   Calendar, 
