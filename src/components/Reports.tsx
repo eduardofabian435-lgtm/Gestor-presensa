@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FileText, 
   Download, 
@@ -14,22 +14,24 @@ import {
   BarChart3,
   Search,
   ChevronDown,
-  Trash2
+  Trash2,
+  Edit2
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { useFirebase } from '../contexts/FirebaseContext';
-import { safeFormatDate } from '../lib/firebaseUtils';
+import { safeFormatDate, handleFirestoreError } from '../lib/firebaseUtils';
 import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { UserProfile, ClassRoom, Student, AttendanceRecord, Interruption, ClassReport } from '../types';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { OperationType } from '../constants/operations';
+import { useNavigate } from 'react-router-dom';
+import ConfirmDialog from './ConfirmDialog';
 
 const Reports: React.FC = () => {
   const { isAdmin, user } = useFirebase();
+  const navigate = useNavigate();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<{uid: string, name: string}[]>([]);
@@ -51,10 +53,9 @@ const Reports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string, type: 'report' | 'interruption' } | null>(null);
 
   const handleDeleteReport = async (reportId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este relatório?')) return;
-    
     try {
       setDeleting(reportId);
       await deleteDoc(doc(db, 'class_reports', reportId));
@@ -67,8 +68,6 @@ const Reports: React.FC = () => {
   };
 
   const handleDeleteInterruption = async (interruptionId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta intercorrência?')) return;
-    
     try {
       setDeleting(interruptionId);
       await deleteDoc(doc(db, 'interruptions', interruptionId));
@@ -227,20 +226,37 @@ const Reports: React.FC = () => {
     };
   }, [selectedClass, selectedStudent, startDate, endDate, selectedTeacher, classes, isAdmin, selectedPolo]);
 
-  const studentStats = React.useMemo(() => {
+  const sessionKeys = useMemo(() => {
+    const fromAttendance = attendance.map(a => `${a.classId}_${a.date}_${a.teacherId}`);
+    const fromReports = classReports.map(r => `${r.classId}_${r.date}_${r.teacherId}`);
+    const fromInterruptions = interruptions.map(i => `${i.classId}_${i.date}_${i.teacherId}`);
+    
+    return Array.from(new Set([...fromAttendance, ...fromReports, ...fromInterruptions]));
+  }, [attendance, classReports, interruptions]);
+
+  const sessions = useMemo(() => {
+    return sessionKeys.length;
+  }, [sessionKeys]);
+
+  const studentStats = useMemo(() => {
     const stats: Record<string, { total: number; present: number; absent: number; percentage: number }> = {};
+    
+    const totalSessions = sessionKeys.length;
+
     students.forEach(student => {
-      const studentAttendance = attendance.filter(a => a.studentId === student.id);
-      const total = studentAttendance.length;
-      const present = studentAttendance.filter(a => a.status === 'present').length;
-      const absent = total - present;
+      const studentPresences = attendance.filter(a => a.studentId === student.id && a.status === 'present').length;
+      
+      const total = totalSessions;
+      const present = studentPresences;
+      const absent = Math.max(0, total - present);
       const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+      
       stats[student.id] = { total, present, absent, percentage };
     });
     return stats;
-  }, [students, attendance]);
+  }, [students, attendance, sessionKeys]);
 
-  const classAverage = React.useMemo(() => {
+  const classAverage = useMemo(() => {
     if (students.length === 0) return 0;
     const totalPercentage: number = Object.values(studentStats).reduce<number>((acc, s: any) => acc + s.percentage, 0);
     return Math.round(totalPercentage / students.length);
@@ -273,9 +289,19 @@ const Reports: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     try {
       setGenerating(true);
+      
+      // Dynamic imports to prevent initialization issues in production
+      // We import them sequentially to ensure jsPDF is available if autotable needs it
+      const jsPDFModule = await import('jspdf');
+      const jsPDF = jsPDFModule.jsPDF || (jsPDFModule as any).default;
+      
+      const autoTableModule = await import('jspdf-autotable');
+      // Some environments return the function directly, some as default
+      const autoTable = (autoTableModule as any).default || autoTableModule;
+
       const className = classes.find(c => c.id === selectedClass)?.name || 'Relatório Geral';
       const studentName = allStudents.find(s => s.id === selectedStudent)?.name || 'Todos os Alunos';
       const teacherName = teachers.find(t => t.uid === selectedTeacher)?.name || 'Todos os Professores';
@@ -299,7 +325,7 @@ const Reports: React.FC = () => {
       
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`Total de Aulas: ${new Set(attendance.map(a => a.date)).size}`, 14, 52);
+      doc.text(`Total de Chamadas: ${sessions}`, 14, 52);
       doc.text(`Média de Frequência: ${classAverage}%`, 14, 58);
       doc.text(`Total de Intercorrências: ${interruptions.length}`, 14, 64);
 
@@ -579,7 +605,7 @@ const Reports: React.FC = () => {
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Aulas</p>
             <p className="text-3xl font-bold text-slate-900 mt-1">
-              {new Set(attendance.map(a => a.date)).size}
+              {sessions}
             </p>
           </div>
           <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-[#1a36b1]">
@@ -766,9 +792,18 @@ const Reports: React.FC = () => {
                         </div>
                         
                         {(isAdmin || report.teacherId === user?.uid) && (
-                          <div className="flex justify-end pt-2">
+                          <div className="flex justify-end gap-2 pt-2">
+                            {isAdmin && (
+                              <button
+                                onClick={() => navigate('/attendance', { state: { classId: report.classId, date: report.date, teacherId: report.teacherId } })}
+                                className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-all flex items-center justify-center shadow-sm border border-transparent hover:border-blue-100"
+                                title="Editar Relatório"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleDeleteReport(report.id)}
+                              onClick={() => setConfirmDelete({ id: report.id, type: 'report' })}
                               disabled={deleting === report.id}
                               className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-all flex items-center justify-center shadow-sm border border-transparent hover:border-red-100"
                               title="Excluir Relatório"
@@ -816,13 +851,25 @@ const Reports: React.FC = () => {
                         <span className="text-xs font-bold text-slate-400">
                           {safeFormatDate(item.date, "d 'de' MMMM, yyyy", { locale: ptBR })}
                         </span>
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded ml-auto">
+                          Por: {teachers.find(t => t.uid === item.teacherId)?.name || 'Professor'}
+                        </span>
                       </div>
                       <p className="text-slate-700 font-medium">{item.description}</p>
                       
                       {(isAdmin || item.teacherId === user?.uid) && (
-                        <div className="flex justify-end pt-2">
+                        <div className="flex justify-end gap-2 pt-2">
+                          {isAdmin && (
+                            <button
+                              onClick={() => navigate('/attendance', { state: { classId: item.classId, date: item.date, teacherId: item.teacherId } })}
+                              className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-all flex items-center justify-center shadow-sm border border-transparent hover:border-blue-100"
+                              title="Editar Intercorrência"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleDeleteInterruption(item.id)}
+                            onClick={() => setConfirmDelete({ id: item.id, type: 'interruption' })}
                             disabled={deleting === item.id}
                             className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-all flex items-center justify-center shadow-sm border border-transparent hover:border-red-100"
                             title="Excluir Intercorrência"
@@ -843,6 +890,22 @@ const Reports: React.FC = () => {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) {
+            if (confirmDelete.type === 'report') {
+              handleDeleteReport(confirmDelete.id);
+            } else {
+              handleDeleteInterruption(confirmDelete.id);
+            }
+          }
+        }}
+        title={confirmDelete?.type === 'report' ? "Excluir Relatório" : "Excluir Intercorrência"}
+        message={`Tem certeza que deseja excluir este ${confirmDelete?.type === 'report' ? 'relatório' : 'item'}? Esta ação não pode ser desfeita.`}
+        confirmText="Excluir"
+      />
     </div>
   );
 };
