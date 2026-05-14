@@ -38,8 +38,10 @@ import {
 import { db, auth } from '../firebase';
 import { collection, query, onSnapshot, where, Timestamp, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { useFirebase } from '../contexts/FirebaseContext';
+import { handleFirestoreError } from '../lib/firebaseUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { Student, ClassRoom, GroupSchedule, ScheduleItem } from '../types';
+import { OperationType } from '../constants/operations';
 import { CLASS_SCHEDULE } from '../constants/schedule';
 import { cn } from '../lib/utils';
 
@@ -105,6 +107,8 @@ const Calendar: React.FC = () => {
         ...doc.data()
       })) as AttendanceRecord[];
       setAttendanceData(data);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'attendance');
     });
 
     const qEvents = query(collection(db, 'events'));
@@ -114,14 +118,20 @@ const Calendar: React.FC = () => {
         ...doc.data()
       })) as SchoolEvent[];
       setEvents(data);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'events');
     });
 
     const unsubStudents = onSnapshot(collection(db, 'students'), (snap) => {
       setStudents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'students');
     });
 
     const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
       setClasses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClassRoom)));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'classes');
     });
 
     const unsubSchedules = onSnapshot(collection(db, 'schedules'), (snapshot) => {
@@ -134,6 +144,9 @@ const Calendar: React.FC = () => {
         const days = Object.keys(fetchedSchedules[0].days);
         if (days.length > 0) setSelectedDay(days[0]);
       }
+      setLoading(false);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'schedules');
       setLoading(false);
     });
 

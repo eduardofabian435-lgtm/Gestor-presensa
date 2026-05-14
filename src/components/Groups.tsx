@@ -3,9 +3,10 @@ import { db, auth } from '../firebase';
 import { collection, addDoc, onSnapshot, query, deleteDoc, doc, updateDoc, getDocs, serverTimestamp, orderBy } from 'firebase/firestore';
 import { useFirebase } from '../contexts/FirebaseContext';
 import { handleFirestoreError } from '../lib/firebaseUtils';
-import { OperationType } from '../types';
+import { OperationType } from '../constants/operations';
 import { Users, Plus, Trash2, Edit2, Loader2, Search, UserPlus, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface Group {
   id: string;
@@ -39,6 +40,7 @@ const Groups: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPolo, setSelectedPolo] = useState<'all' | 'salvador' | 'ilha'>('all');
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'classes'), orderBy('createdAt', 'desc'));
@@ -298,11 +300,7 @@ const Groups: React.FC = () => {
                           <Edit2 className="w-5 h-5" />
                         </button>
                         <button
-                          onClick={async () => {
-                            if (window.confirm('Excluir este grupo?')) {
-                              await deleteDoc(doc(db, 'classes', group.id));
-                            }
-                          }}
+                          onClick={() => setDeleteId(group.id)}
                           className="p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                           title="Excluir Grupo"
                         >
@@ -477,6 +475,22 @@ const Groups: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={async () => {
+          if (deleteId) {
+            try {
+              await deleteDoc(doc(db, 'classes', deleteId));
+            } catch (err) {
+              handleFirestoreError(err, OperationType.DELETE, `classes/${deleteId}`);
+            }
+          }
+        }}
+        title="Excluir Grupo"
+        message="Tem certeza que deseja excluir este grupo? Esta ação não pode ser desfeita e removerá o vínculo com os alunos."
+        confirmText="Excluir"
+      />
     </div>
   );
 };

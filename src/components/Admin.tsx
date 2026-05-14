@@ -6,6 +6,9 @@ import { Users, BookOpen, GraduationCap, Plus, Trash2, Search, UserPlus, School,
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, ClassRoom, Student } from '../types';
+import { OperationType } from '../constants/operations';
+import { handleFirestoreError } from '../lib/firebaseUtils';
+import ConfirmDialog from './ConfirmDialog';
 
 const Admin: React.FC = () => {
   const { isAdmin, isTeacher } = useFirebase();
@@ -24,6 +27,7 @@ const Admin: React.FC = () => {
   const [migrating, setMigrating] = useState(false);
   const [migrationConfirm, setMigrationConfirm] = useState<'salvador' | 'ilha' | null>(null);
   const [migrationStatus, setMigrationStatus] = useState<string | null>(null);
+  const [deleteConfig, setDeleteConfig] = useState<{ collection: string, id: string } | null>(null);
 
   useEffect(() => {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
@@ -123,7 +127,6 @@ const Admin: React.FC = () => {
   };
 
   const handleDelete = async (collectionName: string, id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este item?')) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -155,6 +158,7 @@ const Admin: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setError('Erro ao excluir item: ' + (err.message || 'Tente novamente.'));
+      handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${id}`);
     } finally {
       setSubmitting(false);
     }
@@ -519,7 +523,7 @@ const Admin: React.FC = () => {
                           <option value="teacher">Professor</option>
                           <option value="admin">Administrador</option>
                         </select>
-                        <button onClick={() => handleDelete('users', user.uid)} disabled={user.email === 'eduardofabian435@gmail.com'} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all disabled:opacity-20">
+                        <button onClick={() => setDeleteConfig({ collection: 'users', id: user.uid })} disabled={user.email === 'eduardofabian435@gmail.com'} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all disabled:opacity-20">
                           <Trash2 className="w-5 h-5" />
                         </button>
                       </>
@@ -552,7 +556,7 @@ const Admin: React.FC = () => {
                     </div>
                   </div>
                   {isAdmin && (
-                    <button onClick={() => handleDelete('classes', c.id)} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                    <button onClick={() => setDeleteConfig({ collection: 'classes', id: c.id })} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
                       <Trash2 className="w-5 h-5" />
                     </button>
                   )}
@@ -576,7 +580,7 @@ const Admin: React.FC = () => {
                     </div>
                   </div>
                   {isAdmin && (
-                    <button onClick={() => handleDelete('students', s.id)} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                    <button onClick={() => setDeleteConfig({ collection: 'students', id: s.id })} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
                       <Trash2 className="w-5 h-5" />
                     </button>
                   )}
@@ -668,6 +672,14 @@ const Admin: React.FC = () => {
       <AnimatePresence>
         {/* Modal removed as password management is handled by Google */}
       </AnimatePresence>
+      <ConfirmDialog
+        isOpen={!!deleteConfig}
+        onClose={() => setDeleteConfig(null)}
+        onConfirm={() => deleteConfig && handleDelete(deleteConfig.collection, deleteConfig.id)}
+        title="Excluir Item"
+        message="Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita."
+        confirmText="Excluir"
+      />
     </div>
   );
 };

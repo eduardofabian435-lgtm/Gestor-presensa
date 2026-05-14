@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useFirebase, safeFormatDate } from '../contexts/FirebaseContext';
+import { useFirebase } from '../contexts/FirebaseContext';
+import { safeFormatDate } from '../lib/firebaseUtils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
@@ -21,15 +22,19 @@ import {
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClassRoom, Interruption } from '../types';
+import { useLocation } from 'react-router-dom';
+import ConfirmDialog from './ConfirmDialog';
 
 const Interruptions: React.FC = () => {
   const { user, isAdmin } = useFirebase();
+  const location = useLocation();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [interruptions, setInterruptions] = useState<Interruption[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   
   // Form state
   const [selectedClass, setSelectedClass] = useState('');
@@ -37,6 +42,16 @@ const Interruptions: React.FC = () => {
   const [description, setDescription] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPolo, setSelectedPolo] = useState<'all' | 'salvador' | 'ilha'>('all');
+
+  useEffect(() => {
+    if (location.state?.editItem) {
+      const item = location.state.editItem as Interruption;
+      setEditingId(item.id);
+      setSelectedClass(item.classId);
+      setDate(item.date);
+      setDescription(item.description);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     if (!user) return;
@@ -117,7 +132,6 @@ const Interruptions: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta intercorrência?')) return;
     try {
       await deleteDoc(doc(db, 'interruptions', id));
     } catch (err) {
@@ -327,7 +341,7 @@ const Interruptions: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => handleDelete(item.id)}
+                          onClick={() => setDeleteId(item.id)}
                           className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                           title="Excluir"
                         >
@@ -342,6 +356,14 @@ const Interruptions: React.FC = () => {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && handleDelete(deleteId)}
+        title="Excluir Intercorrência"
+        message="Tem certeza que deseja excluir esta intercorrência? Esta ação não pode ser desfeita."
+        confirmText="Excluir"
+      />
     </div>
   );
 };

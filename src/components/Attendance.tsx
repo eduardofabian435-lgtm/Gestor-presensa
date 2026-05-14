@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot, writeBatch, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useFirebase } from '../contexts/FirebaseContext';
 import { handleFirestoreError } from '../lib/firebaseUtils';
@@ -7,7 +7,8 @@ import { format } from 'date-fns';
 import { Check, X, Search, Filter, Save, AlertCircle, CheckCircle2, ChevronDown, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { Student, ClassRoom, AttendanceRecord, OperationType, Polo, AttendanceStatus } from '../types';
+import { Student, ClassRoom, AttendanceRecord, Polo, AttendanceStatus } from '../types';
+import { OperationType } from '../constants/operations';
 import { useLocation } from 'react-router-dom';
 
 const Attendance: React.FC = () => {
@@ -17,6 +18,7 @@ const Attendance: React.FC = () => {
   const [selectedPolo, setSelectedPolo] = useState<Polo | 'all'>('all');
   const [selectedClass, setSelectedClass] = useState<string>(location.state?.classId || '');
   const [date, setDate] = useState(location.state?.date || format(new Date(), 'yyyy-MM-dd'));
+  const [editingTeacherId, setEditingTeacherId] = useState<string | null>(location.state?.teacherId || null);
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [existingRecords, setExistingRecords] = useState<string[]>([]);
@@ -78,237 +80,210 @@ const Attendance: React.FC = () => {
 
   // Fetch existing attendance records when class or date changes
   useEffect(() => {
-    if (selectedClass && date) {
-      const q = query(
-        collection(db, 'attendance'), 
-        where('classId', '==', selectedClass),
-        where('date', '==', date)
-      );
-      
-      const unsub = onSnapshot(q, (snap) => {
-        const initial: Record<string, AttendanceStatus> = {};
-        const recordIds: string[] = [];
-        
-        // Mark all as absent first
-        students.forEach(s => {
-          if (s.id) initial[s.id] = 'absent';
-        });
-
-        // Update with present records
-        snap.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.studentId) initial[data.studentId] = 'present';
-          recordIds.push(doc.id);
-        });
-        
-        setAttendance(initial);
-        setExistingRecords(recordIds);
-      }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'attendance');
-      });
-
-      // Also fetch report and incident
-      const qReport = query(
-        collection(db, 'class_reports'),
-        where('classId', '==', selectedClass),
-        where('date', '==', date)
-      );
-      const unsubReport = onSnapshot(qReport, (snap) => {
-        if (!snap.empty) {
-          setReport(snap.docs[0].data().content);
-          setExistingReportId(snap.docs[0].id);
-        } else {
-          setReport('');
-          setExistingReportId(null);
-        }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'class_reports');
-      });
-
-      const qIncident = query(
-        collection(db, 'interruptions'),
-        where('classId', '==', selectedClass),
-        where('date', '==', date)
-      );
-      const unsubIncident = onSnapshot(qIncident, (snap) => {
-        if (!snap.empty) {
-          setIncident(snap.docs[0].data().description);
-          setExistingIncidentId(snap.docs[0].id);
-        } else {
-          setIncident('');
-          setExistingIncidentId(null);
-        }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'interruptions');
-      });
-
-      return () => {
-        unsub();
-        unsubReport();
-        unsubIncident();
-      };
-    } else {
+    if (!selectedClass || !date) {
       setAttendance({});
       setExistingRecords([]);
-      setReport('');
-      setIncident('');
-    }
-  }, [selectedClass, date, students.length]); // depend on students count too to initialize correctly
-
-  const handleToggle = (studentId: string) => {
-    setAttendance(prev => ({
-      ...prev,
-      [studentId]: prev[studentId] === 'present' ? 'absent' : 'present'
-    }));
-  };
-
-  const handleSave = async () => {
-    if (!selectedClass || !user) return;
-    
-    // Check if teacher is trying to edit existing records
-    if (!isAdmin && existingRecords.length > 0) {
-      setError("Atenção: A presença para esta data já foi registrada. Entre em contato com o administrador para realizar ajustes.");
-      setTimeout(() => {
-        if (isMounted.current) setError(null);
-      }, 5000);
       return;
     }
 
+    const targetTeacherId = editingTeacherId || user?.uid;
+    if (!targetTeacherId) return;
+
+    const q = query(
+      collection(db, 'attendance'), 
+      where('classId', '==', selectedClass),
+      where('date', '==', date),
+      where('teacherId', '==', targetTeacherId)
+    );
+    
+    // We only want to populate the attendance state ONCE when class or date changes
+    // to allow the user to then edit it locally before saving.
+    getDocs(q).then(snap => {
+      if (!isMounted.current) return;
+      const initial: Record<string, AttendanceStatus> = {};
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.studentId) initial[data.studentId] = 'present';
+      });
+      setAttendance(initial);
+      setExistingRecords(snap.docs.map(d => d.id));
+    }).catch(err => {
+      console.error("Error fetching attendance:", err);
+      handleFirestoreError(err, OperationType.LIST, 'attendance');
+    });
+  }, [selectedClass, date]);
+
+  // Handle report fetching separately
+  useEffect(() => {
+    if (!selectedClass || !date) {
+      setReport('');
+      setExistingReportId(null);
+      return;
+    }
+
+    const targetTeacherId = editingTeacherId || user?.uid;
+    if (!targetTeacherId) return;
+
+    const qReport = query(
+      collection(db, 'class_reports'),
+      where('classId', '==', selectedClass),
+      where('date', '==', date),
+      where('teacherId', '==', targetTeacherId)
+    );
+
+    return onSnapshot(qReport, (snap) => {
+      if (!snap.empty) {
+        setReport(snap.docs[0].data().content);
+        setExistingReportId(snap.docs[0].id);
+      } else {
+        setReport('');
+        setExistingReportId(null);
+      }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'class_reports');
+    });
+  }, [selectedClass, date]);
+
+  // Handle incidents fetching separately
+  useEffect(() => {
+    if (!selectedClass || !date) {
+      setIncident('');
+      setExistingIncidentId(null);
+      return;
+    }
+
+    const targetTeacherId = editingTeacherId || user?.uid;
+    if (!targetTeacherId) return;
+
+    const qIncident = query(
+      collection(db, 'interruptions'),
+      where('classId', '==', selectedClass),
+      where('date', '==', date),
+      where('teacherId', '==', targetTeacherId)
+    );
+
+    return onSnapshot(qIncident, (snap) => {
+      if (!snap.empty) {
+        setIncident(snap.docs[0].data().description);
+        setExistingIncidentId(snap.docs[0].id);
+      } else {
+        setIncident('');
+        setExistingIncidentId(null);
+      }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'interruptions');
+    });
+  }, [selectedClass, date]);
+
+  const handleToggle = (studentId: string) => {
+    if (!selectedClass || !user || !date) return;
+    
+    const currentStatus = attendance[studentId] || 'absent';
+    const newStatus: AttendanceStatus = currentStatus === 'present' ? 'absent' : 'present';
+    
+    // Update local state ONLY
+    setAttendance(prev => ({ ...prev, [studentId]: newStatus }));
+    setError(null);
+  };
+
+  const handleSave = async () => {
+    if (!selectedClass || !user || !date) return;
+    
     setSaving(true);
     setError(null);
-    const today = date;
-    
-    // Safety timeout to prevent infinite loading state
-    const timeoutId = setTimeout(() => {
-      if (isMounted.current) {
-        setSaving(prev => {
-          if (prev) {
-            setError("O servidor está demorando para responder. Por favor, verifique sua internet e tente novamente.");
-            return false;
-          }
-          return false;
-        });
-      }
-    }, 15000); // 15 seconds safety
     
     try {
       const batch = writeBatch(db);
       const now = serverTimestamp();
       const classData = classes.find(c => c.id === selectedClass);
-      
-      if (!classData) {
-        throw new Error("Dados da turma não encontrados para " + selectedClass);
-      }
-      
-      const rawPolo = classData.polo || 'salvador';
-      const polo = rawPolo.toLowerCase() as Polo;
+      const polo = (classData?.polo?.toLowerCase() || 'salvador') as Polo;
 
-      // Verify polo is valid for rules
-      if (polo !== 'salvador' && polo !== 'ilha') {
-        throw new Error(`Polo inválido: ${polo}. Deve ser 'salvador' ou 'ilha'.`);
-      }
+      const targetTeacherId = editingTeacherId || user.uid;
 
-      // 1. Delete all existing attendance records for this date and class
-      if (existingRecords.length > 0) {
-        existingRecords.forEach(id => {
-          batch.delete(doc(db, 'attendance', id));
-        });
-      }
+      // 1. Process Attendance Records
+      // First, we need to know which records currently exist in the DB for THIS teacher to know if we overwrite or delete
+      const q = query(
+        collection(db, 'attendance'), 
+        where('classId', '==', selectedClass),
+        where('date', '==', date),
+        where('teacherId', '==', targetTeacherId)
+      );
+      const currentSnap = await getDocs(q);
+      const existingInDb = new Map<string, string>(); // studentId -> recordDocId
+      currentSnap.docs.forEach(doc => {
+        existingInDb.set(doc.data().studentId, doc.id);
+      });
 
-      // 2. Save current attendance only for present students
-      let presentCount = 0;
-      Object.entries(attendance).forEach(([studentId, status]) => {
-        if (status === 'present') {
-          presentCount++;
-          const attendanceRef = doc(collection(db, 'attendance'));
-          batch.set(attendanceRef, {
-            studentId,
+      // Update/Create records for ALL students in the class based on local 'attendance' state
+      students.forEach(student => {
+        const isPresent = attendance[student.id] === 'present';
+        const existingDocId = existingInDb.get(student.id);
+        const recordId = `res_attend_${student.id}_${selectedClass}_${date}_${targetTeacherId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const recordRef = doc(db, 'attendance', recordId);
+
+        if (isPresent) {
+          batch.set(recordRef, {
+            studentId: student.id,
             classId: selectedClass,
             polo,
-            date: today,
-            status: 'present',
-            teacherId: user.uid,
+            date,
+            status: 'present' as AttendanceStatus,
+            teacherId: targetTeacherId,
             timestamp: now
           });
+        } else if (existingDocId || attendance[student.id] === 'absent') {
+          // If was present but now absent, or just ensuring it's not there
+          batch.delete(recordRef);
         }
       });
-      
-      // 3. Delete existing report and incident using stored IDs
-      if (existingReportId) {
-        batch.delete(doc(db, 'class_reports', existingReportId));
-      }
-      if (existingIncidentId) {
-        batch.delete(doc(db, 'interruptions', existingIncidentId));
-      }
 
-      // Save the class report if it exists
+      // 2. Surgical saving for Report
+      const reportId = `report_${selectedClass}_${date}_${targetTeacherId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const reportRef = doc(db, 'class_reports', reportId);
+      
       if (report.trim()) {
-        const reportRef = doc(collection(db, 'class_reports'));
         batch.set(reportRef, {
           classId: selectedClass,
-          teacherId: user.uid,
+          teacherId: targetTeacherId,
           polo,
-          date: today,
+          date,
           content: report.trim(),
           timestamp: now
         });
+      } else {
+        batch.delete(reportRef);
       }
 
-      // Save the incident if it exists
+      // 3. Surgical saving for Incidents
+      const incidentId = `incident_${selectedClass}_${date}_${targetTeacherId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const incidentRef = doc(db, 'interruptions', incidentId);
+      
       if (incident.trim()) {
-        const incidentRef = doc(collection(db, 'interruptions'));
         batch.set(incidentRef, {
           classId: selectedClass,
-          teacherId: user.uid,
+          teacherId: targetTeacherId,
           polo,
-          date: today,
+          date,
           description: incident.trim(),
           timestamp: now
         });
+      } else {
+        batch.delete(incidentRef);
       }
       
-      try {
-        await batch.commit();
-      } catch (commitErr: any) {
-        console.error("Batch commit failed:", commitErr);
-        if (commitErr.code === 'permission-denied') {
-          throw new Error("Permissão negada ao salvar no banco de dados. Verifique seu acesso.");
-        }
-        throw commitErr;
-      }
+      await batch.commit();
       
       if (isMounted.current) {
         setSuccess(true);
-        setError(null);
         setTimeout(() => {
           if (isMounted.current) setSuccess(false);
         }, 3000);
       }
     } catch (err: any) {
-      console.error('Error saving attendance:', err);
-      if (isMounted.current) {
-        let msg = 'Erro ao salvar presença. Tente novamente.';
-        if (err.code === 'permission-denied') {
-          msg = 'Erro de permissão: Você não tem autorização para realizar esta operação.';
-        } else if (err.message && err.message.includes('Quota exceeded')) {
-          msg = 'Cota do banco de dados excedida. Tente novamente amanhã.';
-        } else if (err.message) {
-          msg = err.message;
-          try {
-            const parsed = JSON.parse(err.message);
-            if (parsed.error) msg = `Erro: ${parsed.error}`;
-          } catch (e) {}
-        }
-        setError(msg);
-        setTimeout(() => {
-          if (isMounted.current) setError(null);
-        }, 5000);
-      }
+      handleFirestoreError(err, OperationType.WRITE, 'reports/incidents');
+      setError("Erro ao salvar diário de aula.");
     } finally {
-      clearTimeout(timeoutId);
-      if (isMounted.current) {
-        setSaving(false);
-      }
+      if (isMounted.current) setSaving(false);
     }
   };
 
@@ -627,7 +602,7 @@ const Attendance: React.FC = () => {
                         className="flex items-center gap-3"
                       >
                         <Save className="w-6 h-6" />
-                        <span>REGISTRAR PARTICIPAÇÃO</span>
+                        <span>SALVAR DIÁRIO E OCORRÊNCIAS</span>
                       </motion.div>
                     )}
                   </AnimatePresence>

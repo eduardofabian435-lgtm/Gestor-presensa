@@ -30,7 +30,8 @@ import { Student, ClassRoom } from '../types';
 import { cn } from '../lib/utils';
 import { useFirebase } from '../contexts/FirebaseContext';
 import { handleFirestoreError } from '../lib/firebaseUtils';
-import { OperationType } from '../types';
+import { OperationType } from '../constants/operations';
+import ConfirmDialog from './ConfirmDialog';
 
 const Students: React.FC = () => {
   const { isAdmin, isTeacher } = useFirebase();
@@ -43,6 +44,7 @@ const Students: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -169,13 +171,11 @@ const Students: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
-      try {
-        await deleteDoc(doc(db, 'students', id)).catch(err => handleFirestoreError(err, OperationType.DELETE, `students/${id}`));
-      } catch (error) {
-        console.error('Error deleting student:', error);
-        alert('Erro ao excluir aluno.');
-      }
+    try {
+      await deleteDoc(doc(db, 'students', id)).catch(err => handleFirestoreError(err, OperationType.DELETE, `students/${id}`));
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      alert('Erro ao excluir aluno.');
     }
   };
 
@@ -330,7 +330,7 @@ const Students: React.FC = () => {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleDelete(student.id)}
+                            onClick={() => setDeleteId(student.id)}
                             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -381,7 +381,7 @@ const Students: React.FC = () => {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => handleDelete(student.id)}
+                        onClick={() => setDeleteId(student.id)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -587,6 +587,14 @@ const Students: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && handleDelete(deleteId)}
+        title="Excluir Aluno"
+        message="Tem certeza que deseja excluir este aluno? Esta ação não pode ser desfeita."
+        confirmText="Excluir"
+      />
     </div>
   );
 };

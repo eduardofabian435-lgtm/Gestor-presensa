@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, limit, orderBy, getDocs } from 'f
 import { db } from '../firebase';
 import { useFirebase } from '../contexts/FirebaseContext';
 import { handleFirestoreError } from '../lib/firebaseUtils';
-import { OperationType } from '../types';
+import { OperationType } from '../constants/operations';
 import { 
   Users, 
   Calendar, 
@@ -146,7 +146,7 @@ const Dashboard: React.FC = () => {
           const classPolo = r.polo || ''; // Use polo from record if available, or we'll need to check classesPoloMap
           if (selectedPolo !== 'all' && classPolo !== selectedPolo) return;
 
-          const key = `${r.date}_${r.classId}`;
+          const key = `${r.date}_${r.classId}_${r.teacherId}`;
           if (!sessions[key]) {
             sessions[key] = {
               id: key,
@@ -196,7 +196,7 @@ const Dashboard: React.FC = () => {
             // Only count if the teacher is the one we are looking at (or any if admin)
             const matchesTeacher = !simulatedTeacherId || data.teacherId === simulatedTeacherId || (profile?.role === 'teacher' && data.teacherId === profile.uid);
             if (isAdmin ? (simulatedTeacherId ? data.teacherId === simulatedTeacherId : true) : data.teacherId === profile?.uid) {
-              monthSessions.add(`${data.date}_${data.classId}`);
+              monthSessions.add(`${data.date}_${data.classId}_${data.teacherId}`);
             }
           }
         });

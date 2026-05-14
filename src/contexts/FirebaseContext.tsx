@@ -2,8 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { UserProfile, OperationType, FirebaseContextType } from '../types';
-import { handleFirestoreError } from '../lib/firebaseUtils';
+import { UserProfile, FirebaseContextType } from '../types';
+import { OperationType } from '../constants/operations';
 import { format } from 'date-fns';
 
 const FirebaseContext = createContext<FirebaseContextType>({
@@ -32,7 +32,6 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (error instanceof Error && error.message.includes('the client is offline')) {
           console.error("Please check your Firebase configuration. The client is offline.");
         }
-        // Skip logging for other errors, as this is simply a connection test.
       }
     };
     testConnection();
@@ -46,27 +45,25 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           try {
             userDoc = await getDoc(doc(db, 'users', currentUser.uid));
           } catch (err) {
-            handleFirestoreError(err, OperationType.GET, userPath);
+            console.error(`Erro ao buscar usuário em ${userPath}:`, err);
           }
           
           const isMasterAdmin = currentUser.email?.toLowerCase() === "eduardofabian435@gmail.com";
           
           if (userDoc?.exists()) {
             const data = userDoc.data() as UserProfile;
-            // Force admin role if it's the master email but role is wrong
             if (isMasterAdmin && data.role !== 'admin') {
               const updatedProfile = { ...data, role: 'admin' as const };
               try {
                 await setDoc(doc(db, 'users', currentUser.uid), updatedProfile);
               } catch (err) {
-                handleFirestoreError(err, OperationType.WRITE, userPath);
+                console.error(`Erro ao atualizar perfil admin em ${userPath}:`, err);
               }
               setProfile(updatedProfile);
             } else {
               setProfile(data);
             }
           } else {
-            // If profile doesn't exist, check if it's the default admin
             if (isMasterAdmin) {
               const newProfile: UserProfile = {
                 uid: currentUser.uid,
@@ -77,7 +74,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               try {
                 await setDoc(doc(db, 'users', currentUser.uid), newProfile);
               } catch (err) {
-                handleFirestoreError(err, OperationType.WRITE, userPath);
+                console.error(`Erro ao criar perfil admin em ${userPath}:`, err);
               }
               setProfile(newProfile);
             } else {
@@ -99,7 +96,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => unsubscribe();
   }, []);
 
-   const value = {
+  const value = {
     user,
     profile,
     loading,
@@ -108,26 +105,5 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isAuthReady,
   };
 
-  return (
-    <FirebaseContext.Provider value={value}>
-      {children}
-    </FirebaseContext.Provider>
-  );
-};
-
-export const safeFormatDate = (date: any) => {
-  if (!date) return '';
-
-  try {
-    // Firestore Timestamp
-    if (date?.toDate) {
-      return format(date.toDate(), 'dd/MM/yyyy');
-    }
-
-    // Data comum
-    return format(new Date(date), 'dd/MM/yyyy');
-  } catch (error) {
-    console.error('Erro ao formatar data:', error);
-    return '';
-  }
+  return <FirebaseContext.Provider value={value}>{children}</FirebaseContext.Provider>;
 };

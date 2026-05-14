@@ -1,46 +1,6 @@
 import { User } from 'firebase/auth';
-
-export type UserRole = 'admin' | 'teacher';
-export type Polo = 'salvador' | 'ilha';
-export type AttendanceStatus = 'present' | 'absent';
-
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-export interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-  }
-}
-
-export interface UserProfile {
-  uid: string;
-  name: string;
-  email: string;
-  role: UserRole;
-}
-
-export interface FirebaseContextType {
-  user: User | null;
-  profile: UserProfile | null;
-  loading: boolean;
-  isAdmin: boolean;
-  isTeacher: boolean;
-  isAuthReady: boolean;
-}
+import { Polo, AttendanceStatus } from './types/base';
+export * from './types/base';
 
 export interface Student {
   id: string;
